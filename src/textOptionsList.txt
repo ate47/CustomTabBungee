@@ -1,0 +1,10 @@
+%name% : Player's name
+%displayname% : Player's display name
+%servername% : Server's config name
+%servermotd% : Server's config M.O.T.D.
+%playerscounts% : Bungee's players counts
+%ping% : Player's ping
+%cping% : Player's ping with color
+%date% : Machine date
+%chatmode% : Player's chat mode
+%mainhand% : Player's main hand 
