@@ -13,6 +13,8 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.nio.charset.Charset;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Calendar;
 import java.util.HashMap;
 import java.util.Map;
@@ -24,9 +26,11 @@ import com.google.common.io.ByteStreams;
 import com.google.gson.GsonBuilder;
 
 import net.md_5.bungee.api.ChatColor;
+import net.md_5.bungee.api.CommandSender;
 import net.md_5.bungee.api.chat.TextComponent;
 import net.md_5.bungee.api.connection.ProxiedPlayer;
 import net.md_5.bungee.api.event.PluginMessageEvent;
+import net.md_5.bungee.api.event.TabCompleteEvent;
 import net.md_5.bungee.api.plugin.Listener;
 import net.md_5.bungee.api.plugin.Plugin;
 import net.md_5.bungee.event.EventHandler;
@@ -41,9 +45,15 @@ public class CustomTabPlugin extends Plugin implements Listener {
 	public static final String CHANNEL_NAME = "CustomTab";
 	private static Map<String, Function<ProxiedPlayer, String>> textOptions = new HashMap<>();
 	/**
-	 * Rate between every tab change
+	 * Rate between every tab change in millisecond
 	 */
 	public static final long REFRESH_RATE = 1000L;
+
+	private static <T> ArrayList<T> asArrayList(Iterable<T> iterable) {
+		ArrayList<T> arrayList = new ArrayList<>();
+		iterable.forEach(arrayList::add);
+		return arrayList;
+	}
 
 	private static File createDir(File dir) {
 		dir.mkdirs();
@@ -60,10 +70,45 @@ public class CustomTabPlugin extends Plugin implements Listener {
 		return file;
 	}
 
-	public static String getOptionnedText(String raw, ProxiedPlayer p) {
+	/**
+	 * get the global raw text footer
+	 * 
+	 * @return raw footer
+	 */
+	public static String getGlobalFooter() {
+		return globalFooter;
+	}
+
+	/**
+	 * get the global raw text header
+	 * 
+	 * @return raw header
+	 */
+	public static String getGlobalHeader() {
+		return globalHeader;
+	}
+
+	/**
+	 * Replace in a raw text the Bungee text options
+	 * 
+	 * @param raw
+	 *            raw text data
+	 * @param player
+	 *            player to base information
+	 * @return the text with options
+	 */
+	public static String getOptionnedText(String raw, ProxiedPlayer player) {
 		for (String key : textOptions.keySet())
-			raw = raw.replaceAll("%" + key + "%", textOptions.get(key).apply(p));
+			if(raw.contains("%" + key + "%"))
+				raw = raw.replaceAll("%" + key + "%", textOptions.get(key).apply(player));
 		return raw.replace('&', ChatColor.COLOR_CHAR);
+	}
+
+	/**
+	 * @return if CustomTab ask to a Bukkit server or not local information
+	 */
+	public static boolean isBukkit() {
+		return !noBukkit;
 	}
 
 	private static String loadFile(File file) throws IOException {
@@ -79,25 +124,49 @@ public class CustomTabPlugin extends Plugin implements Listener {
 
 	/**
 	 * Register a new text option for this plugin
-	 * @param name name of the option to add
-	 * @param option text option associated with the specified name
-	 * @throws IllegalArgumentException if the name does contain a non-alphanumerics characters
+	 * 
+	 * @param name
+	 *            name of the option to add
+	 * @param option
+	 *            text option associated with the specified name
+	 * @throws IllegalArgumentException
+	 *             if the name does contain a non-alphanumerics characters
 	 */
 	public static void registerTextOption(String name, Function<ProxiedPlayer, String> option) {
-		if(!name.matches("[A-Za-z0-9\\_]*")) throw new IllegalArgumentException("name can only contain alphanumerics characters");
+		if (!name.matches("[A-Za-z0-9\\_]*"))
+			throw new IllegalArgumentException("name can only contain alphanumerics characters");
 		textOptions.put(name, option);
 	}
+
 	/**
 	 * Send a tab to a player
-	 * @param player player to send the tab
-	 * @param header header text
-	 * @param footer footer text
+	 * 
+	 * @param player
+	 *            player to send the tab
+	 * @param header
+	 *            header text
+	 * @param footer
+	 *            footer text
 	 */
 	public static void sendTab(ProxiedPlayer player, String header, String footer) {
 		player.setTabHeader(new TextComponent(header), new TextComponent(footer));
 	}
 
-	private void loadConfigs() throws IOException {
+	private static File setFile(File file, String value) throws IOException {
+		BufferedWriter bw = new BufferedWriter(
+				new OutputStreamWriter(new FileOutputStream(file), Charset.forName("UTF-8")));
+		bw.write(value);
+		bw.close();
+		return file;
+	}
+
+	private CustomTabCommand command;
+
+	Map<String, Function<ProxiedPlayer, String>> getTextOptions() {
+		return textOptions;
+	}
+
+	void loadConfig() throws IOException {
 		File d = createDir(getDataFolder());
 		File config = createFile(new File(d, "config.cfg"), "noBukkit: true");
 		File header = createFile(new File(d, "header.cfg"), "%bukkitheadermessage%");
@@ -126,11 +195,10 @@ public class CustomTabPlugin extends Plugin implements Listener {
 		} else
 			throw new FileNotFoundException();
 	}
-
 	@Override
 	public void onEnable() {
 		try {
-			loadConfigs();
+			loadConfig();
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -152,25 +220,21 @@ public class CustomTabPlugin extends Plugin implements Listener {
 					+ String.valueOf(ping);
 		});
 		registerTextOption("date", p -> new SimpleDateFormat("HH:mm:ss").format(Calendar.getInstance().getTime()));
-		getProxy().getScheduler().schedule(this, () -> {
-			for (ProxiedPlayer pp : getProxy().getPlayers()) {
-				if (pp.getServer() == null)
-					continue;
-				if (noBukkit) {
-					sendTab(pp, getOptionnedText(globalHeader, pp), getOptionnedText(globalFooter, pp));
-				} else {
-					if (pp.getServer() == null)
-						continue;
-					ByteArrayDataOutput out = ByteStreams.newDataOutput();
-					Map<String, Object> hm = new HashMap<String, Object>();
-					hm.put("footer", globalFooter);
-					hm.put("header", globalHeader);
-					hm.put("player", pp.getName());
-					out.writeUTF(new GsonBuilder().create().toJson(hm));
-					pp.getServer().sendData(CHANNEL_NAME, out.toByteArray());
-				}
-			}
-		}, 0, REFRESH_RATE, TimeUnit.MILLISECONDS);
+		getProxy().getScheduler().schedule(this,
+				() -> getProxy().getPlayers().stream().filter(p -> p.getServer() != null).forEach(p -> {
+					if (noBukkit)
+						sendTab(p, getOptionnedText(globalHeader, p), getOptionnedText(globalFooter, p));
+					else {
+						ByteArrayDataOutput out = ByteStreams.newDataOutput();
+						Map<String, Object> hm = new HashMap<String, Object>();
+						hm.put("footer", globalFooter);
+						hm.put("header", globalHeader);
+						hm.put("player", p.getName());
+						out.writeUTF(new GsonBuilder().create().toJson(hm));
+						p.getServer().sendData(CHANNEL_NAME, out.toByteArray());
+					}
+				}), 0, REFRESH_RATE, TimeUnit.MILLISECONDS);
+		getProxy().getPluginManager().registerCommand(this, command = new CustomTabCommand(this));
 		getProxy().getPluginManager().registerListener(this, this);
 		getProxy().registerChannel(CHANNEL_NAME);
 		super.onEnable();
@@ -192,5 +256,42 @@ public class CustomTabPlugin extends Plugin implements Listener {
 				e.printStackTrace();
 			}
 		}
+	}
+
+	@EventHandler
+	public void onTabComplete(TabCompleteEvent ev) {
+		if (ev.isCancelled())
+			return;
+		String cursor = ev.getCursor();
+		if (ev.getCursor().startsWith("/") && ev.getSender() instanceof ProxiedPlayer)
+			cursor = cursor.substring(1);
+
+		String[] args = ev.getCursor().split(" ", 2);
+		if (args.length == 2
+				&& (args[0].equalsIgnoreCase(command.getName())
+						|| Arrays.asList(command.getAliases()).contains(args[0]))
+				&& ev.getSender() instanceof CommandSender)
+			ev.getSuggestions()
+					.addAll(asArrayList(command.onTabComplete((CommandSender) ev.getSender(), args[1].split(" "))));
+		else if (command.getName().toLowerCase().startsWith(args[0].toLowerCase()))
+			ev.getSuggestions().add(command.getName());
+		else
+			for (String alias : command.getAliases())
+				if (alias.toLowerCase().startsWith(args[0].toLowerCase()))
+					ev.getSuggestions().add(alias);
+	}
+
+	void saveConfig() throws IOException {
+		File d = createDir(getDataFolder());
+		setFile(new File(d, "footer.cfg"), globalFooter);
+		setFile(new File(d, "header.cfg"), globalHeader);
+	}
+
+	void setGlobalFooter(String globalFooter) {
+		CustomTabPlugin.globalFooter = globalFooter;
+	}
+
+	void setGlobalHeader(String globalHeader) {
+		CustomTabPlugin.globalHeader = globalHeader;
 	}
 }

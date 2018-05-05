@@ -10,23 +10,20 @@ public class ExamplePlugin extends Plugin {
 	@Override
 	public void onEnable() {
 		// Search CustomTabPlugin
-		Plugin customTab = getProxy().getPluginManager().getPlugin("CustomTab");
-		if (customTab != null) {
-			
+		if(getProxy().getPluginManager().getPlugin("CustomTab")!=null) {
 			// Register a new text option with the name "myOption" (usable with %myOption%)
 			
 			CustomTabPlugin.registerTextOption("myOption",
-					p -> p.isForgeUser() ? String.valueOf(p.getModList().size()) : "Not a forge user");
+					p -> p.isForgeUser() ? "You are a forge user" : "You are not a forge user");
 			
 			// The same text option in a other code style
-			
 			CustomTabPlugin.registerTextOption("myOption", new Function<ProxiedPlayer, String>() {
 				@Override
 				public String apply(ProxiedPlayer p) {
 					if (p.isForgeUser()) {
-						return String.valueOf(p.getModList().size());
+						return "You are a forge user";
 					} else {
-						return "Not a forge user";
+						return "You are not a forge user";
 					}
 				}
 			});

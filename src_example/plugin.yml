@@ -1,0 +1,4 @@
+name: ExamplePlugin
+main: com.example.exampleplugin.ExamplePlugin
+version: 0.1
+author: ATE47
