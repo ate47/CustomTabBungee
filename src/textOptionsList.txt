@@ -8,3 +8,12 @@
 %date% : Machine date
 %chatmode% : Player's chat mode
 %mainhand% : Player's main hand 
+
+Permissions:
+ctp.gtab : use /gtab command
+ctp.gtab.reload : Reload config
+ctp.gtab.opt : Show available text options
+ctp.gtab.show : Show tab part
+ctp.gtab.delline : Delete a line
+ctp.gtab.addline : Add a line
+ctp.gtab.setline : Set a line
