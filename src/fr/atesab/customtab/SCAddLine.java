@@ -18,7 +18,7 @@ public class SCAddLine extends SubCommand {
 
 	@Override
 	public boolean execute(CommandSender sender, String[] args, String main, CommandType type) {
-		if (args.length < 2 || !args[0].matches("[0-9]+"))
+		if (args.length < 1 || !args[0].matches("[0-9]+"))
 			return false;
 		int line = Integer.valueOf(args[0]).intValue() - 1;
 		String[] lines = (type == CommandType.footer ? CustomTabPlugin.getGlobalFooter()
@@ -58,7 +58,8 @@ public class SCAddLine extends SubCommand {
 	@Override
 	public List<String> onTabComplete(CommandSender sender, String[] args, CommandType type) {
 		List<String> list = new ArrayList<>();
-		plugin.getTextOptions().keySet().forEach(k -> list.add("%" + k + "%"));
+		if (args.length < 2)
+			plugin.getTextOptions().stream().filter(om -> om.canBeTabbed()).forEach(om -> list.add(om.getUsage()));
 		return list;
 	}
 }

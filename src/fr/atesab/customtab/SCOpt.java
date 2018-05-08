@@ -1,8 +1,5 @@
 package fr.atesab.customtab;
 
-import java.util.ArrayList;
-import java.util.List;
-
 import net.md_5.bungee.api.ChatColor;
 import net.md_5.bungee.api.CommandSender;
 import net.md_5.bungee.api.chat.ClickEvent;
@@ -37,14 +34,15 @@ public class SCOpt extends SubCommand {
 					.append("/").color(ChatColor.DARK_GRAY).append(String.valueOf(maxPage)).color(ChatColor.AQUA)
 					.append(")").color(ChatColor.DARK_GRAY);
 		sender.sendMessage(title.append(": ").bold(true).color(ChatColor.RED).create());
-		List<String> keys = new ArrayList<>(plugin.getTextOptions().keySet());
-		for (int i = page * elementByPage; i < keys.size() && i < (page + 1) * elementByPage; i++) {
-			String k = keys.get(i);
-			ComponentBuilder msg = new ComponentBuilder("- ").color(ChatColor.GRAY).append("%" + k + "%")
+		for (int i = page * elementByPage; i < plugin.getTextOptions().size() && i < (page + 1) * elementByPage; i++) {
+			OptionMatcher optionMatcher = plugin.getTextOptions().get(i);
+			ComponentBuilder msg = new ComponentBuilder("- ").color(ChatColor.GRAY).append(optionMatcher.getUsage())
 					.color(ChatColor.GOLD);
-			if (sender instanceof ProxiedPlayer)
-				msg.append(": ").color(ChatColor.GRAY)
-						.append(plugin.getTextOptions().get(k).apply(((ProxiedPlayer) sender))).color(ChatColor.WHITE);
+			if (sender instanceof ProxiedPlayer && optionMatcher.getExampleFunction() != null) {
+				String result = optionMatcher.getExampleFunction().apply((ProxiedPlayer) sender, optionMatcher);
+				if(!result.isEmpty())
+					msg.append(": ").color(ChatColor.GRAY).append(result).color(ChatColor.WHITE);
+			}
 			sender.sendMessage(msg.create());
 		}
 		if (sender instanceof ProxiedPlayer && maxPage != 1) {

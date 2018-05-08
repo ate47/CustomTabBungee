@@ -6,8 +6,11 @@
 %ping% : Player's ping
 %cping% : Player's ping with color
 %date% : Machine date
+%date-<format>% : Machine date with a specific format : https://docs.oracle.com/javase/7/docs/api/java/text/SimpleDateFormat.html 
 %chatmode% : Player's chat mode
 %mainhand% : Player's main hand 
+%swap-<colors>% : swap every second in a list of colors
+%swaptext(-delay)?-text1;;text2;;...% : swap every second (or every delay (in second)) in a list of texts 
 
 Permissions:
 ctp.gtab : use /gtab command

@@ -17,9 +17,13 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BiFunction;
 import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import com.google.common.io.ByteArrayDataOutput;
 import com.google.common.io.ByteStreams;
@@ -27,6 +31,7 @@ import com.google.gson.GsonBuilder;
 
 import net.md_5.bungee.api.ChatColor;
 import net.md_5.bungee.api.CommandSender;
+import net.md_5.bungee.api.ProxyServer;
 import net.md_5.bungee.api.chat.TextComponent;
 import net.md_5.bungee.api.connection.ProxiedPlayer;
 import net.md_5.bungee.api.event.PluginMessageEvent;
@@ -41,11 +46,22 @@ public class CustomTabPlugin extends Plugin implements Listener {
 	private static boolean noBukkit = true;
 	/**
 	 * Channel used by CustomTab to send/receive Bukkit tab
+	 * 
+	 * @since 1.1
 	 */
 	public static final String CHANNEL_NAME = "CustomTab";
-	private static Map<String, Function<ProxiedPlayer, String>> textOptions = new HashMap<>();
+	/**
+	 * Normal option name regex pattern to check if a normal text option has a valid
+	 * name
+	 * 
+	 * @since 1.3
+	 */
+	public static final String NORMAL_OPTION_NAME_PATTERN = "[A-Za-z0-9\\_]*";
+	private static List<OptionMatcher> textOptions = new ArrayList<>();
 	/**
 	 * Rate between every tab change in millisecond
+	 * 
+	 * @since 1.1
 	 */
 	public static final long REFRESH_RATE = 1000L;
 
@@ -74,6 +90,7 @@ public class CustomTabPlugin extends Plugin implements Listener {
 	 * get the global raw text footer
 	 * 
 	 * @return raw footer
+	 * @since 1.2
 	 */
 	public static String getGlobalFooter() {
 		return globalFooter;
@@ -83,6 +100,7 @@ public class CustomTabPlugin extends Plugin implements Listener {
 	 * get the global raw text header
 	 * 
 	 * @return raw header
+	 * @since 1.2
 	 */
 	public static String getGlobalHeader() {
 		return globalHeader;
@@ -96,16 +114,37 @@ public class CustomTabPlugin extends Plugin implements Listener {
 	 * @param player
 	 *            player to base information
 	 * @return the text with options
+	 * @since 1.1
+	 * @see #registerTextOption(Pattern, String, BiFunction, BiFunction, boolean) to
+	 *      register new options
 	 */
 	public static String getOptionnedText(String raw, ProxiedPlayer player) {
-		for (String key : textOptions.keySet())
-			if(raw.contains("%" + key + "%"))
-				raw = raw.replaceAll("%" + key + "%", textOptions.get(key).apply(player));
+		for (OptionMatcher option : textOptions) {
+			Matcher matcher = option.getPattern().matcher(raw);
+			StringBuffer buffer = new StringBuffer();
+			while (matcher.find()) {
+				String result;
+				try {
+					result = (option.getFunction().apply(player, matcher));
+				} catch (Exception e) {
+					e.printStackTrace();
+					result = "*error*";
+				}
+				matcher.appendReplacement(buffer, result);
+			}
+			matcher.appendTail(buffer);
+			raw = buffer.toString();
+		}
 		return raw.replace('&', ChatColor.COLOR_CHAR);
+	}
+
+	static long getSystemTimeInSecond() {
+		return System.currentTimeMillis() / 1000L;
 	}
 
 	/**
 	 * @return if CustomTab ask to a Bukkit server or not local information
+	 * @since 1.2
 	 */
 	public static boolean isBukkit() {
 		return !noBukkit;
@@ -125,17 +164,73 @@ public class CustomTabPlugin extends Plugin implements Listener {
 	/**
 	 * Register a new text option for this plugin
 	 * 
+	 * @param optionMatcher
+	 *            option matcher to match and evaluate the text
+	 * @see #registerTextOption(OptionMatcher)
+	 * @since 1.3
+	 */
+	public static void registerTextOption(OptionMatcher optionMatcher) {
+		textOptions.removeIf(op -> op.getPattern().toString().equals(optionMatcher.getPattern().toString()));
+		textOptions.add(optionMatcher);
+	}
+
+	/**
+	 * Register a new text option for this plugin
+	 * 
+	 * @param pattern
+	 *            pattern to match the option
+	 * @param usage
+	 *            the usage of this pattern
+	 * @param option
+	 *            text option associated
+	 * @since 1.3
+	 * @see #registerTextOption(Pattern, String, BiFunction, BiFunction, boolean)
+	 */
+	public static void registerTextOption(Pattern pattern, String usage,
+			BiFunction<ProxiedPlayer, Matcher, String> option) {
+		registerTextOption(pattern, usage, option, null, false);
+	}
+
+	/**
+	 * Register a new text option for this plugin
+	 * 
+	 * @param pattern
+	 *            pattern to match the option
+	 * @param usage
+	 *            the usage of this pattern
+	 * @param option
+	 *            text option associated
+	 * @param exampleFunction
+	 *            the example to show in the tab command opt list
+	 * @param canBeTabbed
+	 *            if in the tab command the option usage can be get with tab
+	 * @since 1.3
+	 */
+
+	public static void registerTextOption(Pattern pattern, String usage,
+			BiFunction<ProxiedPlayer, Matcher, String> option,
+			BiFunction<ProxiedPlayer, OptionMatcher, String> exampleFunction, boolean canBeTabbed) {
+		registerTextOption(new OptionMatcher(pattern, usage, option, exampleFunction, canBeTabbed));
+	}
+
+	/**
+	 * Register a new text option for this plugin
+	 * 
 	 * @param name
 	 *            name of the option to add
 	 * @param option
 	 *            text option associated with the specified name
 	 * @throws IllegalArgumentException
-	 *             if the name does contain a non-alphanumerics characters
+	 *             if the name does contain non-alphanumerics characters
+	 * @since 1.1
+	 * @see #registerTextOption(Pattern, String, BiFunction)
 	 */
 	public static void registerTextOption(String name, Function<ProxiedPlayer, String> option) {
-		if (!name.matches("[A-Za-z0-9\\_]*"))
+		if (!name.matches(NORMAL_OPTION_NAME_PATTERN))
 			throw new IllegalArgumentException("name can only contain alphanumerics characters");
-		textOptions.put(name, option);
+		String usage = "%" + name + "%";
+		registerTextOption(Pattern.compile(usage), usage, (p, m) -> option.apply(p),
+				(p, om) -> om.getFunction().apply(p, null), true);
 	}
 
 	/**
@@ -147,9 +242,13 @@ public class CustomTabPlugin extends Plugin implements Listener {
 	 *            header text
 	 * @param footer
 	 *            footer text
+	 * @since 1.1
 	 */
 	public static void sendTab(ProxiedPlayer player, String header, String footer) {
-		player.setTabHeader(new TextComponent(header), new TextComponent(footer));
+		SendTabEvent sendTabEvent = new SendTabEvent(header, footer, player);
+		if (!ProxyServer.getInstance().getPluginManager().callEvent(sendTabEvent).isCancelled())
+			sendTabEvent.getPlayer().setTabHeader(new TextComponent(sendTabEvent.getHeader()),
+					new TextComponent(sendTabEvent.getFooter()));
 	}
 
 	private static File setFile(File file, String value) throws IOException {
@@ -162,7 +261,7 @@ public class CustomTabPlugin extends Plugin implements Listener {
 
 	private CustomTabCommand command;
 
-	Map<String, Function<ProxiedPlayer, String>> getTextOptions() {
+	List<OptionMatcher> getTextOptions() {
 		return textOptions;
 	}
 
@@ -195,6 +294,7 @@ public class CustomTabPlugin extends Plugin implements Listener {
 		} else
 			throw new FileNotFoundException();
 	}
+
 	@Override
 	public void onEnable() {
 		try {
@@ -202,6 +302,7 @@ public class CustomTabPlugin extends Plugin implements Listener {
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
+
 		registerTextOption("name", p -> p.getName());
 		registerTextOption("mainhand", p -> p.getMainHand().name().replace('_', ' '));
 		registerTextOption("chatmode", p -> p.getChatMode().name().replace('_', ' '));
@@ -210,6 +311,7 @@ public class CustomTabPlugin extends Plugin implements Listener {
 		registerTextOption("servermotd", p -> p.getServer().getInfo().getMotd());
 		registerTextOption("playerscounts", p -> String.valueOf(this.getProxy().getOnlineCount()));
 		registerTextOption("ping", p -> String.valueOf(p.getPing()));
+
 		registerTextOption("cping", p -> {
 			long ping = p.getPing();
 			return (ping < 0 ? ChatColor.WHITE
@@ -219,7 +321,40 @@ public class CustomTabPlugin extends Plugin implements Listener {
 											: (ping < 1000 ? ChatColor.RED : ChatColor.DARK_RED))))).toString()
 					+ String.valueOf(ping);
 		});
-		registerTextOption("date", p -> new SimpleDateFormat("HH:mm:ss").format(Calendar.getInstance().getTime()));
+
+		registerTextOption(Pattern.compile("%date((-.+)?){1}%"), "%date%", (p, m) -> {
+			String format = m.group(1);
+			return new SimpleDateFormat(format.isEmpty() ? "HH:mm:ss" : format.substring(1))
+					.format(Calendar.getInstance().getTime());
+		}, (p, om) -> new SimpleDateFormat("HH:mm:ss").format(Calendar.getInstance().getTime()), true);
+
+		char[] ALL_COLORS = { 'a', 'b', 'c', 'd', 'e', 'f', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9' };
+		char[] LIGHT_COLOR = { 'a', 'b', 'c', 'd', 'e', 'f' };
+		char[] HEAVY_COLORS = { '2', '3', '4', '5', '6', '7' };
+		char[] FORMAT = { 'o', 'l', 'm', 'n', 'r', 'k' };
+
+		registerTextOption(Pattern.compile("%s(wap)?(((-[a-fA-F0-9k-oK-OrR]+)?)|l(ight)?|f(ormat)?|h(eavy)?)?%"),
+				"%swap%|%swap-<colors>%|%swapheavy%|%swaplight%|%swapformat%", (p, m) -> {
+					String format = m.group(2);
+					char[] chars = format.isEmpty() ? ALL_COLORS
+							: format.toLowerCase().matches("h(eavy)?") ? HEAVY_COLORS
+									: format.toLowerCase().matches("l(ight)?") ? LIGHT_COLOR
+											: format.toLowerCase().matches("f(ormat)?") ? FORMAT
+													: format.substring(1).toCharArray();
+					return new String(
+							new char[] { ChatColor.COLOR_CHAR, chars[(int) (getSystemTimeInSecond() % chars.length)] });
+				});
+
+		// I use add(0, ...) to allow options swapping
+		textOptions.add(0, new OptionMatcher(Pattern.compile("%s(wap)?t(ext)?(-[0-9]+)?-(.+)?"),
+				"%swaptext(-delay)?-text1;;text2;;...%", (p, m) -> {
+					String d = m.group(3);
+					String[] formats = m.group(4).split(";;");
+					return formats[(int) ((getSystemTimeInSecond()
+							/ Math.max(1, d.isEmpty() ? 1L : Long.valueOf(d.substring(1)).longValue()))
+							% formats.length)];
+				}, null, false));
+
 		getProxy().getScheduler().schedule(this,
 				() -> getProxy().getPlayers().stream().filter(p -> p.getServer() != null).forEach(p -> {
 					if (noBukkit)
@@ -294,4 +429,5 @@ public class CustomTabPlugin extends Plugin implements Listener {
 	void setGlobalHeader(String globalHeader) {
 		CustomTabPlugin.globalHeader = globalHeader;
 	}
+
 }
